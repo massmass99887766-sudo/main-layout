@@ -334,7 +334,7 @@
         <div class="drop-zone-text">
           タップしてファイルを選択<br>またはここに<strong>ドラッグ＆ドロップ</strong>
         </div>
-        <input type="file" id="fileInput" multiple>
+        <input type="file" id="fileInput" multiple accept="video/*">
       </div>
       
       <div class="preview-list" id="previewList"></div>
@@ -363,7 +363,7 @@
     // ★★★★ 重要：バックエンドAPIのURLを設定 ★★★★
     // Web Service（server.js）をデプロイして発行されたURLをここに入力してください。
     // 例: 'https://gvn-backend-xxxx.onrender.com'
-    const API_BASE_URL = 'https://storage-service-79ik.onrender.com';
+    const API_BASE_URL = 'https://ここにバックエンドのURLを入れる.onrender.com';
     
     let selectedFiles = [];
     let currentFolder = 'Video';
@@ -410,8 +410,18 @@
         folderTabs.forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
         currentFolder = tab.dataset.folder;
+
+        // 選択されたフォルダに応じてファイル選択フィルターを変更
+        if (currentFolder === 'Video') {
+          fileInput.accept = 'video/*';
+        } else {
+          fileInput.accept = 'image/*';
+        }
       });
     });
+
+    // 初期状態（Video）のacceptフィルタを設定
+    fileInput.accept = 'video/*';
 
     // ドラッグ＆ドロップ処理
     dropZone.addEventListener('click', () => fileInput.click());
@@ -440,8 +450,38 @@
     }
 
     function addFiles(files) {
-      selectedFiles = [...selectedFiles, ...files];
-      renderPreview();
+      const validFiles = [];
+      const invalidFiles = [];
+
+      // 選択中フォルダの種別チェック
+      files.forEach(file => {
+        if (currentFolder === 'Video') {
+          if (file.type.startsWith('video/')) {
+            validFiles.push(file);
+          } else {
+            invalidFiles.push(file.name);
+          }
+        } else { // Image または Thumbnail
+          if (file.type.startsWith('image/')) {
+            validFiles.push(file);
+          } else {
+            invalidFiles.push(file.name);
+          }
+        }
+      });
+
+      // 不正なファイルがあった場合は警告を表示
+      if (invalidFiles.length > 0) {
+        const allowedType = currentFolder === 'Video' ? '動画' : '画像';
+        showError(`「${currentFolder}」フォルダには${allowedType}ファイルのみ選択可能です。（対象外: ${invalidFiles.join(', ')}）`);
+      } else {
+        errorContainer.style.display = 'none';
+      }
+
+      if (validFiles.length > 0) {
+        selectedFiles = [...selectedFiles, ...validFiles];
+        renderPreview();
+      }
     }
 
     function removeFile(index) {
