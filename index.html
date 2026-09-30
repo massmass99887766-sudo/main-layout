@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>GVN ORG STORAGE</title>
+
   <style>
     :root {
       --bg: #0f172a;
@@ -66,6 +67,7 @@
       margin-bottom: 8px;
     }
 
+    input[type="password"],
     select {
       width: 100%;
       padding: 12px 16px;
@@ -75,6 +77,9 @@
       background-color: #0f172a;
       color: var(--text);
       outline: none;
+    }
+
+    select {
       appearance: none;
       background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
       background-repeat: no-repeat;
@@ -110,6 +115,7 @@
       box-shadow: 0 2px 4px rgba(0,0,0,0.2);
     }
 
+    /* ドロップゾーン */
     .drop-zone {
       border: 2px dashed var(--border);
       border-radius: 12px;
@@ -145,6 +151,7 @@
       display: none;
     }
 
+    /* プレビューリスト */
     .preview-list {
       margin-top: 12px;
       display: flex;
@@ -311,6 +318,13 @@
   <div class="container">
     <h1>GVN ORG STORAGE</h1>
 
+    <!-- 認証キー設定 -->
+    <div class="form-group">
+      <label for="authKeyInput">アクセスキー (AUTH_KEY)</label>
+      <input type="password" id="authKeyInput" placeholder="キーを入力">
+    </div>
+
+    <!-- ストレージ選択 -->
     <div class="form-group">
       <label for="accountSelect">ストレージアカウント</label>
       <select id="accountSelect">
@@ -318,6 +332,7 @@
       </select>
     </div>
 
+    <!-- ディレクトリ選択 -->
     <div class="form-group">
       <label>保存先ディレクトリ</label>
       <div class="folder-tabs" id="folderTabs">
@@ -327,6 +342,7 @@
       </div>
     </div>
 
+    <!-- ファイルアップロード領域 -->
     <div class="form-group">
       <label>アップロードファイル</label>
       <div class="drop-zone" id="dropZone">
@@ -342,6 +358,7 @@
 
     <button class="btn-submit" id="submitBtn">アップロードを実行</button>
 
+    <!-- プログレスバー -->
     <div class="progress-container" id="progressContainer">
       <div class="progress-bar-bg">
         <div class="progress-bar-fill" id="progressBarFill"></div>
@@ -349,6 +366,7 @@
       <div class="progress-text" id="progressText">0%</div>
     </div>
 
+    <!-- エラー・結果表示エリア -->
     <div class="error-container" id="errorContainer"></div>
 
     <div class="result-container" id="resultContainer">
@@ -359,15 +377,13 @@
   </div>
 
   <script>
-    
-    // ★★★★ 重要：バックエンドAPIのURLを設定 ★★★★
-    // Web Service（server.js）をデプロイして発行されたURLをここに入力してください。
-    // 例: 'https://gvn-backend-xxxx.onrender.com'
-    const API_BASE_URL = 'https://ここにバックエンドのURLを入れる.onrender.com';
+    const API_BASE_URL = 'https://gvn-org-storage-api.onrender.com'; // ご自身のAPIサーバーURL
+    const DEFAULT_AUTH_KEY = 'GVN-ORG-STORAGE-AGIANSBZJZKOWP1772737738193';
     
     let selectedFiles = [];
     let currentFolder = 'Video';
 
+    const authKeyInput = document.getElementById('authKeyInput');
     const accountSelect = document.getElementById('accountSelect');
     const folderTabs = document.querySelectorAll('.folder-tab');
     const dropZone = document.getElementById('dropZone');
@@ -384,13 +400,28 @@
     const urlList = document.getElementById('urlList');
     const copyBtn = document.getElementById('copyBtn');
 
-    // アカウント情報取得（API_BASE_URLを使用）
+    // 初期キーの設定（保存済みがあれば使用、なければデフォルト値）
+    const savedKey = localStorage.getItem('gvn_auth_key') || DEFAULT_AUTH_KEY;
+    authKeyInput.value = savedKey;
+
+    authKeyInput.addEventListener('change', () => {
+      localStorage.setItem('gvn_auth_key', authKeyInput.value.trim());
+      loadAccounts();
+    });
+
+    // 1. アカウント情報の取得 (認証ヘッダー付与)
     async function loadAccounts() {
+      const key = authKeyInput.value.trim();
       try {
-        const res = await fetch(`${API_BASE_URL}/accounts`);
-        if (!res.ok) throw new Error('Network response was not ok');
-        const data = await res.json();
+        const res = await fetch(`${API_BASE_URL}/accounts`, {
+          headers: { 'x-auth-key': key }
+        });
+        if (res.status === 401) {
+          throw new Error('アクセスキーが無効です。');
+        }
+        if (!res.ok) throw new Error('通信エラーが発生しました。');
         
+        const data = await res.json();
         accountSelect.innerHTML = '';
         data.forEach((acc, index) => {
           const opt = document.createElement('option');
@@ -398,20 +429,21 @@
           opt.textContent = `${acc.name}(${acc.usedSize}/10GB)`;
           accountSelect.appendChild(opt);
         });
+        errorContainer.style.display = 'none';
       } catch (err) {
         console.error(err);
-        accountSelect.innerHTML = '<option value="0">通信エラー（API_BASE_URLを確認してください）</option>';
+        accountSelect.innerHTML = '<option value="">取得失敗</option>';
+        showError(err.message || 'アカウント情報の取得に失敗しました。');
       }
     }
 
-    // フォルダタブ切り替え
+    // 2. フォルダタブの切り替えとファイル制限
     folderTabs.forEach(tab => {
       tab.addEventListener('click', () => {
         folderTabs.forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
         currentFolder = tab.dataset.folder;
 
-        // 選択されたフォルダに応じてファイル選択フィルターを変更
         if (currentFolder === 'Video') {
           fileInput.accept = 'video/*';
         } else {
@@ -420,10 +452,9 @@
       });
     });
 
-    // 初期状態（Video）のacceptフィルタを設定
     fileInput.accept = 'video/*';
 
-    // ドラッグ＆ドロップ処理
+    // 3. ドラッグ＆ドロップ & クリック
     dropZone.addEventListener('click', () => fileInput.click());
     dropZone.addEventListener('dragover', (e) => {
       e.preventDefault();
@@ -441,6 +472,7 @@
       if (e.target.files.length > 0) addFiles(Array.from(e.target.files));
     });
 
+    // 4. バイト数の変換表示（1000進法）
     function formatSize(bytes) {
       if (bytes === 0) return '0 Bytes';
       const k = 1000;
@@ -449,31 +481,24 @@
       return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
 
+    // 5. バリデーション付きファイル追加
     function addFiles(files) {
       const validFiles = [];
       const invalidFiles = [];
 
-      // 選択中フォルダの種別チェック
       files.forEach(file => {
         if (currentFolder === 'Video') {
-          if (file.type.startsWith('video/')) {
-            validFiles.push(file);
-          } else {
-            invalidFiles.push(file.name);
-          }
-        } else { // Image または Thumbnail
-          if (file.type.startsWith('image/')) {
-            validFiles.push(file);
-          } else {
-            invalidFiles.push(file.name);
-          }
+          if (file.type.startsWith('video/')) validFiles.push(file);
+          else invalidFiles.push(file.name);
+        } else {
+          if (file.type.startsWith('image/')) validFiles.push(file);
+          else invalidFiles.push(file.name);
         }
       });
 
-      // 不正なファイルがあった場合は警告を表示
       if (invalidFiles.length > 0) {
         const allowedType = currentFolder === 'Video' ? '動画' : '画像';
-        showError(`「${currentFolder}」フォルダには${allowedType}ファイルのみ選択可能です。（対象外: ${invalidFiles.join(', ')}）`);
+        showError(`「${currentFolder}」には${allowedType}ファイルのみ選択可能です。（対象外: ${invalidFiles.join(', ')}）`);
       } else {
         errorContainer.style.display = 'none';
       }
@@ -514,7 +539,7 @@
       });
     }
 
-    // アップロード処理（API_BASE_URLを使用）
+    // 6. アップロード処理 (x-auth-key ヘッダー付与)
     submitBtn.addEventListener('click', () => {
       if (selectedFiles.length === 0) {
         alert('ファイルを選択してください。');
@@ -535,6 +560,9 @@
 
       const xhr = new XMLHttpRequest();
       xhr.open('POST', `${API_BASE_URL}/upload`, true);
+      
+      // 認証キーをヘッダーにセット
+      xhr.setRequestHeader('x-auth-key', authKeyInput.value.trim());
 
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
@@ -560,7 +588,7 @@
             const err = JSON.parse(xhr.responseText);
             showError(`エラー: ${err.details || err.error}`);
           } catch (e) {
-            showError('アップロードに失敗しました。');
+            showError('アップロードに失敗しました。認証キーを確認してください。');
           }
         }
       };
@@ -568,12 +596,13 @@
       xhr.onerror = () => {
         submitBtn.disabled = false;
         progressContainer.style.display = 'none';
-        showError('通信エラー。API_BASE_URLが正しいか確認してください。');
+        showError('通信エラーが発生しました。');
       };
 
       xhr.send(formData);
     });
 
+    // 7. 結果表示と一括コピー
     function showResult(urls) {
       urlList.innerHTML = '';
       const urlTextList = urls.map(u => u.url);
@@ -588,7 +617,6 @@
       resultContainer.style.display = 'block';
 
       copyBtn.onclick = () => {
-        // execCommand fallback for iFrame / mobile compatibility
         const textarea = document.createElement('textarea');
         textarea.value = urlTextList.join('\n');
         document.body.appendChild(textarea);
@@ -609,7 +637,6 @@
       errorContainer.style.display = 'block';
     }
 
-    // アプリ初期化
     loadAccounts();
   </script>
 </body>
