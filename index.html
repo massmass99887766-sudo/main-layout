@@ -67,7 +67,6 @@
       margin-bottom: 8px;
     }
 
-    input[type="password"],
     select {
       width: 100%;
       padding: 12px 16px;
@@ -77,9 +76,6 @@
       background-color: #0f172a;
       color: var(--text);
       outline: none;
-    }
-
-    select {
       appearance: none;
       background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
       background-repeat: no-repeat;
@@ -318,12 +314,6 @@
   <div class="container">
     <h1>GVN ORG STORAGE</h1>
 
-    <!-- 認証キー設定 -->
-    <div class="form-group">
-      <label for="authKeyInput">アクセスキー (AUTH_KEY)</label>
-      <input type="password" id="authKeyInput" placeholder="キーを入力">
-    </div>
-
     <!-- ストレージ選択 -->
     <div class="form-group">
       <label for="accountSelect">ストレージアカウント</label>
@@ -377,13 +367,12 @@
   </div>
 
   <script>
-    const API_BASE_URL = 'https://gvn-org-storage.onrender.com'; // ご自身のAPIサーバーURL
-    const DEFAULT_AUTH_KEY = 'GVN-ORG-STORAGE-AGIANSBZJZKOWP1772737738193';
+    const API_BASE_URL = 'https://storage-service-79ik.onrender.com'; // ご自身のAPIサーバーURL
+    const AUTH_KEY = 'GVN-ORG-STORAGE-AGIANSBZJZKOWP1772737738193';
     
     let selectedFiles = [];
     let currentFolder = 'Video';
 
-    const authKeyInput = document.getElementById('authKeyInput');
     const accountSelect = document.getElementById('accountSelect');
     const folderTabs = document.querySelectorAll('.folder-tab');
     const dropZone = document.getElementById('dropZone');
@@ -400,21 +389,11 @@
     const urlList = document.getElementById('urlList');
     const copyBtn = document.getElementById('copyBtn');
 
-    // 初期キーの設定（保存済みがあれば使用、なければデフォルト値）
-    const savedKey = localStorage.getItem('gvn_auth_key') || DEFAULT_AUTH_KEY;
-    authKeyInput.value = savedKey;
-
-    authKeyInput.addEventListener('change', () => {
-      localStorage.setItem('gvn_auth_key', authKeyInput.value.trim());
-      loadAccounts();
-    });
-
-    // 1. アカウント情報の取得 (認証ヘッダー付与)
+    // 1. アカウント情報の取得 (裏で認証キーをヘッダー付与)
     async function loadAccounts() {
-      const key = authKeyInput.value.trim();
       try {
         const res = await fetch(`${API_BASE_URL}/accounts`, {
-          headers: { 'x-auth-key': key }
+          headers: { 'x-auth-key': AUTH_KEY }
         });
         if (res.status === 401) {
           throw new Error('アクセスキーが無効です。');
@@ -539,7 +518,7 @@
       });
     }
 
-    // 6. アップロード処理 (x-auth-key ヘッダー付与)
+    // 6. アップロード処理 (x-auth-key ヘッダー自動送信)
     submitBtn.addEventListener('click', () => {
       if (selectedFiles.length === 0) {
         alert('ファイルを選択してください。');
@@ -561,8 +540,8 @@
       const xhr = new XMLHttpRequest();
       xhr.open('POST', `${API_BASE_URL}/upload`, true);
       
-      // 認証キーをヘッダーにセット
-      xhr.setRequestHeader('x-auth-key', authKeyInput.value.trim());
+      // 認証キーを自動的にヘッダーにセット
+      xhr.setRequestHeader('x-auth-key', AUTH_KEY);
 
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
@@ -588,7 +567,7 @@
             const err = JSON.parse(xhr.responseText);
             showError(`エラー: ${err.details || err.error}`);
           } catch (e) {
-            showError('アップロードに失敗しました。認証キーを確認してください。');
+            showError('アップロードに失敗しました。');
           }
         }
       };
